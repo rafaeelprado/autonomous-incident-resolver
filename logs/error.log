@@ -1,0 +1,58 @@
+2026-09-15 14:02:11,284 INFO     [uvicorn.error] Started server process [1]
+2026-09-15 14:02:11,285 INFO     [uvicorn.error] Waiting for application startup.
+2026-09-15 14:02:11,291 INFO     [uvicorn.error] Application startup complete.
+2026-09-15 14:02:11,292 INFO     [uvicorn.error] Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-09-15 14:07:43,918 INFO     [uvicorn.access] 10.0.3.14:51822 - "GET /health HTTP/1.1" 200
+2026-09-15 14:08:02,407 INFO     [uvicorn.access] 10.0.3.14:51840 - "POST /orders HTTP/1.1" 200 request_id=7c1e9b0a customer_id=cus_1a77f0 coupon_code=BEMVINDO10
+2026-09-15 14:08:19,655 INFO     [uvicorn.access] 10.0.3.21:40112 - "POST /orders HTTP/1.1" 200 request_id=b52d44e1 customer_id=cus_02bc9d coupon_code=BEMVINDO10
+2026-09-15 14:09:37,102 ERROR    [uvicorn.error] Exception in ASGI application request_id=e93f2c7d customer_id=cus_8f3a21 coupon_code=None
+Traceback (most recent call last):
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 943, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/src/app.py", line 49, in create_order
+    total = apply_coupon(subtotal, payload.coupon_code)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/src/app.py", line 42, in apply_coupon
+    discount = subtotal * coupon["percent"] / Decimal("100")
+                          ~~~~~~^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+2026-09-15 14:09:37,104 INFO     [uvicorn.access] 10.0.3.14:51902 - "POST /orders HTTP/1.1" 500 request_id=e93f2c7d
+2026-09-15 14:09:52,871 ERROR    [uvicorn.error] Exception in ASGI application request_id=0d4a61f3 customer_id=cus_c4410e coupon_code=BEMVINDO5
+Traceback (most recent call last):
+  File "/srv/order-service/src/app.py", line 49, in create_order
+    total = apply_coupon(subtotal, payload.coupon_code)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/srv/order-service/src/app.py", line 42, in apply_coupon
+    discount = subtotal * coupon["percent"] / Decimal("100")
+                          ~~~~~~^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+2026-09-15 14:09:52,873 INFO     [uvicorn.access] 10.0.3.21:40188 - "POST /orders HTTP/1.1" 500 request_id=0d4a61f3
+2026-09-15 14:10:05,330 WARNING  [alertmanager] SLO breach: order-service 5xx rate 18.4% (threshold 1%) window=5m
