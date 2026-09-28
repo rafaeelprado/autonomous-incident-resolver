@@ -1,0 +1,57 @@
+{
+  "timestamp": "20260917-100508",
+  "model": "claude-sonnet-5",
+  "log_analysis": {
+    "exception_type": "TypeError",
+    "exception_message": "'NoneType' object is not subscriptable",
+    "file_path": "src/app.py",
+    "line_number": 42,
+    "function_name": "apply_coupon",
+    "failing_expression": "discount = subtotal * coupon[\"percent\"] / Decimal(\"100\")  (falha ao subscrever `coupon[\"percent\"]`, pois `coupon` é `None`)",
+    "call_chain": [
+      "src/app.py:49 create_order -> total = apply_coupon(subtotal, payload.coupon_code)",
+      "src/app.py:42 apply_coupon -> discount = subtotal * coupon[\"percent\"] / Decimal(\"100\")  (coupon é None)"
+    ],
+    "trigger_conditions": [
+      "request_id=e93f2c7d customer_id=cus_8f3a21 coupon_code=None — cupom não informado (None) resultou em lookup que retornou None em `coupon`",
+      "request_id=0d4a61f3 customer_id=cus_c4410e coupon_code=BEMVINDO5 — código de cupom inexistente/inválido (diferente do 'BEMVINDO10' usado com sucesso nas requisições anteriores, linhas 6 e 7) resultou no mesmo lookup retornando None",
+      "Contraste: request_id=7c1e9b0a e request_id=b52d44e1 usaram coupon_code=BEMVINDO10 e completaram com sucesso (200), confirmando que apenas coupon_code=None ou códigos não cadastrados (ex: BEMVINDO5) disparam a falha"
+    ],
+    "occurrences": 2,
+    "severity": "SEV2",
+    "impact_summary": "Duas requisições POST /orders retornaram HTTP 500 (request_id=e93f2c7d e request_id=0d4a61f3), impedindo a finalização do pedido para clientes cus_8f3a21 e cus_c4410e quando o coupon_code é ausente (None) ou não reconhecido pelo sistema (ex: \"BEMVINDO5\"). Imediatamente após essas falhas, o log registra um alerta de violação de SLO: \"SLO breach: order-service 5xx rate 18.4% (threshold 1%) window=5m\", indicando que a taxa de erros 5xx do serviço order-service está 18,4x acima do limite aceitável na janela de 5 minutos, configurando degradação significativa e generalizada do serviço de pedidos, não restrita a esses dois casos isolados.",
+    "root_cause_hypothesis": "A função apply_coupon em src/app.py (linha 42) realiza um lookup de cupom (não mostrado diretamente no log, mas inferido pelo estado de `coupon` antes da linha 42) que retorna None quando o coupon_code é None ou não corresponde a um cupom válido/cadastrado (como \"BEMVINDO5\", em contraste com \"BEMVINDO10\" que funcionou). O código não valida se `coupon` é None antes de acessar `coupon[\"percent\"]`, causando TypeError: 'NoneType' object is not subscriptable. Isso propaga uma exceção não tratada até o nível ASGI, resultando em resposta HTTP 500 para o cliente e contribuindo para a violação do SLO de taxa de erros 5xx do serviço order-service."
+  },
+  "code_audit": {
+    "confirmed_root_cause": "A hipótese do LogAnalyst está correta. Em `apply_coupon` (src/app.py), a linha `coupon = COUPONS.get(coupon_code)` (linha 41) retorna `None` sempre que `coupon_code` é `None` ou não existe como chave no dicionário `COUPONS` (ex.: \"BEMVINDO5\" não está cadastrado, apenas \"BEMVINDO10\" e \"BLACKFRIDAY\"). A linha seguinte (linha 42) acessa `coupon[\"percent\"]` sem antes verificar se `coupon` é `None`, causando `TypeError: 'NoneType' object is not subscriptable`, exatamente como reportado no traceback (`src/app.py:42` dentro de `apply_coupon`, chamada a partir de `create_order` na linha 49).",
+    "faulty_code_snippet": "def apply_coupon(subtotal: Decimal, coupon_code: Optional[str]) -> Decimal:\n    \"\"\"Aplica o desconto do cupom ao subtotal.\"\"\"\n    coupon = COUPONS.get(coupon_code)\n    discount = subtotal * coupon[\"percent\"] / Decimal(\"100\")\n    return subtotal - discount",
+    "why_it_failed": "Por primeiros princípios: `dict.get(key)` tem contrato explícito de retornar `None` quando a chave não existe (e não há valor default informado na chamada `COUPONS.get(coupon_code)`). O tipo de retorno de `apply_coupon`'s variável local `coupon` é, portanto, `Optional[dict]` — mas o código trata esse valor incondicionalmente como `dict` ao fazer subscrição `coupon[\"percent\"]`. Isso é uma violação de contrato de tipos: o código assume (implicitamente, sem type-check ou guard clause) que todo `coupon_code` recebido do payload é válido e está pré-cadastrado, ignorando dois caminhos de entrada totalmente legítimos e esperados pelo próprio schema Pydantic: (1) `coupon_code=None`, que é o valor default declarado em `OrderPayload.coupon_code: Optional[str] = None`, e (2) qualquer string que não corresponda a uma chave existente em `COUPONS`, que é um cenário normal de \"cupom inválido/expirado/digitado errado\" em qualquer sistema de e-commerce. Como não há tratamento (`if coupon is None: ...`) antes da linha 42, o `TypeError` não é capturado em nenhum nível da aplicação e sobe até o ASGI/FastAPI, que responde HTTP 500 ao invés de um erro de negócio (400/422) ou de simplesmente não aplicar desconto quando não há cupom.",
+    "hypothesis_confirmed": true,
+    "additional_defects": [
+      "Regra de negócio ignorada: o dicionário COUPONS possui a chave `active` (ex.: `BLACKFRIDAY: {\"percent\": Decimal(\"30\"), \"active\": False}`), mas `apply_coupon` nunca verifica esse flag. Se o lookup tivesse retornado o cupom BLACKFRIDAY, o desconto de 30% seria aplicado mesmo estando marcado como inativo — bug latente de lógica de negócio que ainda não gerou erro 500 mas geraria desconto indevido silenciosamente.",
+      "Nenhuma normalização/validação do `coupon_code` de entrada: não há trim de espaços nem normalização de case (ex.: 'bemvindo10' minúsculo não bateria com a chave 'BEMVINDO10'), tratando variações de digitação como cupom inexistente sem feedback claro ao usuário.",
+      "Ausência de tratamento de exceção em toda a rota `create_order`: qualquer erro em `calculate_subtotal` ou `apply_coupon` propaga como 500 genérico, sem padronização de erro de API (sem uso de `HTTPException` do FastAPI), dificultando diagnósticos futuros e violando boas práticas de contrato de API.",
+      "Falta de logging/observability no fluxo de cupom: quando o lookup falha, não há log estruturado indicando qual coupon_code foi rejeitado, o que dificultou a análise do incidente e exigiu inferência a partir do stack trace.",
+      "Ausência de testes/validação de entrada no nível do schema Pydantic para coupon_code (ex.: normalizar para uppercase via validator), deixando a responsabilidade de sanitização inteiramente para a lógica de negócio, que por sua vez não trata o caso adequadamente."
+    ],
+    "fix_requirements": [
+      "Cenário coupon_code=None (nenhum cupom informado): `apply_coupon` deve retornar o `subtotal` sem desconto (comportamento correto: pedido sem cupom é válido), sem lançar exceção e sem erro 500.",
+      "Cenário coupon_code inválido/inexistente (ex.: 'BEMVINDO5'): a API deve responder com erro de cliente (4xx, ex.: 400/422) e mensagem clara indicando que o cupom é inválido, em vez de 500; a resposta não deve travar a criação do pedido de forma opaca.",
+      "Cenário coupon_code válido mas com `active: False` (ex.: 'BLACKFRIDAY'): o desconto NÃO deve ser aplicado; a API deve tratar o cupom como inválido/expirado (mesmo comportamento de erro de negócio do item anterior, ou fallback para subtotal sem desconto, dependendo da regra de produto a ser definida).",
+      "Cenário coupon_code válido e ativo (ex.: 'BEMVINDO10'): deve continuar funcionando exatamente como hoje, aplicando o percentual de desconto corretamente sobre o subtotal (não regressão).",
+      "O patch deve adicionar uma guarda explícita de tipo/nulidade antes de subscrever `coupon` (`if coupon is None or not coupon.get('active', False): ...`), eliminando qualquer possibilidade de `TypeError: 'NoneType' object is not subscriptable' nesse ponto do código.",
+      "Erros de validação de negócio (cupom inexistente/inativo) devem ser sinalizados via `HTTPException` (ou mecanismo equivalente do FastAPI) com status code apropriado, e não propagar como exceção não tratada até o nível ASGI.",
+      "Deve haver cobertura de teste automatizado para os quatro cenários acima (sem cupom, cupom inexistente, cupom inativo, cupom válido ativo) para prevenir regressão futura e permitir validação do patch antes do deploy.",
+      "Idealmente, adicionar log estruturado (nível warning/info) quando um coupon_code não é encontrado ou está inativo, para facilitar troubleshooting futuro sem depender de leitura de stack trace em produção."
+    ]
+  },
+  "token_usage": {
+    "total_tokens": 134982,
+    "prompt_tokens": 89160,
+    "cached_prompt_tokens": 27549,
+    "completion_tokens": 45822,
+    "reasoning_tokens": 0,
+    "cache_creation_tokens": 27549,
+    "successful_requests": 24
+  }
+}
