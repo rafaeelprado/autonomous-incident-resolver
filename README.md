@@ -1,5 +1,7 @@
 # 🤖 AIR — Autonomous Incident Resolver
 
+🇺🇸 **English** · 🇧🇷 [Português](README.pt-BR.md)
+
 **Multi-agent system that reads a production error log, finds the root cause, audits the source code, and ships a tested patch — with zero human triage.**
 
 Built with **CrewAI** + **Claude (Anthropic)**, using structured (Pydantic) outputs as strict contracts between agents, a sandboxed file-reading tool, and a pytest suite that acts as the *ground truth* for what "fixed" means.
