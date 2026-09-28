@@ -1,57 +1,98 @@
-# AIR — Autonomous Incident Resolver
+# 🤖 AIR — Autonomous Incident Resolver
 
-Sistema multi-agente (Python + CrewAI + Claude) que recebe um log de erro de produção, identifica a causa raiz, audita o código afetado e gera patch + relatório de incidente em Markdown.
+**Multi-agent system that reads a production error log, finds the root cause, audits the source code, and ships a tested patch — with zero human triage.**
+
+Built with **CrewAI** + **Claude (Anthropic)**, using structured (Pydantic) outputs as strict contracts between agents, a sandboxed file-reading tool, and a pytest suite that acts as the *ground truth* for what "fixed" means.
 
 ```
-logs/error.log ──► LogAnalyst ──► CodeAuditor ──► PatchEngineer ──► incidente_resolvido.md
-                   (LogAnalysis)   (CodeAudit)     (Markdown)         runs/<timestamp>.json
+logs/error.log ──▶ LogAnalyst ──▶ CodeAuditor ──▶ PatchEngineer ──▶ incidente_resolvido.md
+                   (root cause)   (confirms +      (patch + tests +     runs/<ts>.json
+                                   finds latent     postmortem)         (structured trace)
+                                   defects)
 ```
 
-## Destaques de engenharia
+---
 
-- **Structured outputs (Pydantic)** entre agentes: contratos tipados em vez de texto livre.
-- **Tool com sandbox**: leitura de arquivos restrita à raiz do projeto, com linhas numeradas para citações precisas.
-- **Testes como oráculo**: `tests/test_app.py` reproduz o incidente (red) e define quando um patch é válido (green).
-- **Rastreabilidade**: cada execução salva análise estruturada e consumo de tokens em `runs/`.
+## Why this exists
 
-## Como rodar
+Most AI-agent portfolio projects are chatbots wrapped around a prompt. **AIR is a pipeline that does real SRE work**: it takes a raw production log, reconstructs the failure, reads the actual source file, and produces a patch that a human can review and merge — plus the regression tests that prove it works.
+
+This repo is the exact incident it resolved, kept as a living demo:
+
+- A FastAPI checkout service (`src/app.py`) with a **real, realistic production bug**: a `TypeError` crash when a coupon code is missing or invalid.
+- A **multi-frame stack trace log** (`logs/error.log`) exactly as it would appear from `uvicorn`/`FastAPI` in production, including an SLO-breach alert.
+- The **full AI-generated incident report** ([`examples/incidente_resolvido.md`](examples/incidente_resolvido.md)), with root-cause analysis (5 Whys), a unified diff patch, and a pytest suite — generated end-to-end by the three agents below, no manual editing.
+
+---
+
+## The agents
+
+| Agent | Role | Output |
+|---|---|---|
+| **LogAnalyst** | SRE triage specialist. Parses the log, discards library frames, isolates the deepest application frame, correlates `request_id`s and payloads to find the trigger, classifies severity using SLO alerts. | `LogAnalysis` (Pydantic) |
+| **CodeAuditor** | Senior Python/FastAPI reviewer. Reads the flagged file, confirms or refutes the hypothesis from first principles, and hunts for **latent defects** in the same code path — not just the crash that got reported. | `CodeAudit` (Pydantic) |
+| **PatchEngineer** | Fix owner. Turns the audit into a minimal, safe patch: business-rule errors become `HTTPException` (4xx), never 500; the success contract stays untouched; regression tests are shipped with the patch. | Markdown incident report |
+
+Every hand-off between agents is a typed Pydantic object, not free text — so a bad LogAnalyst read can't silently corrupt the CodeAuditor's reasoning.
+
+---
+
+## What it actually found
+
+Running the crew against `logs/error.log`, AIR:
+
+1. Isolated the crash to `src/app.py:42` — `coupon["percent"]` on a `None` coupon.
+2. Correlated two different `request_id`s to two different triggers: a missing coupon (`coupon_code=None`) and an unknown one (`"BEMVINDO5"`) — both hitting the same unguarded line.
+3. **Found a bug that never appeared in the logs**: `BLACKFRIDAY` is a real coupon marked `active: False`, but the code never checked that flag — it would have silently applied a 30% discount if referenced.
+4. Shipped a patch that treats "no coupon" as a valid success path, and both "unknown" and "inactive" coupons as a `422`, with a full pytest suite proving all four scenarios (before: 3 failing / 1 passing → after: 4/4 passing).
+
+Full reasoning, 5-Whys root cause, diff, and tests: [`examples/incidente_resolvido.md`](examples/incidente_resolvido.md).
+
+Run artifacts in [`examples/`](examples/): [incident report](examples/incidente_resolvido.md) · [structured run JSON](examples/run_20260917-100508.json) · [patched code](examples/app_corrigido.py)
+
+**Measured cost of that run:** `claude-sonnet-5`, ~135k tokens, 24 API calls.
+
+---
+
+## Engineering highlights
+
+- **Structured outputs as contracts** — `LogAnalysis` and `CodeAudit` are Pydantic models, not prose, so downstream agents get typed, validated data instead of parsing free text.
+- **Sandboxed tool access** — the custom `SandboxedFileReadTool` resolves paths against the project root and refuses anything outside it (no `../../etc/passwd`), and returns line-numbered content so agents cite exact lines instead of guessing.
+- **Tests as the oracle** — `tests/test_app.py` encodes what "correct" means *before* the fix exists. A patch is only valid when the suite goes green; this is the same contract-testing idea used to gate CI in real incident response.
+- **Full traceability** — every run writes a structured JSON artifact (`runs/<timestamp>.json`) with the typed analysis and token usage, so runs are auditable and cheap to evaluate later (success rate, cost per incident, etc.).
+
+---
+
+## Run it yourself
 
 ```bash
+git clone https://github.com/rafaeelprado/autonomous-incident-resolver.git
+cd autonomous-incident-resolver
+
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                                 # preencha ANTHROPIC_API_KEY
 
-pytest -q          # 3 testes falham — o bug está reproduzido
-python main.py     # gera incidente_resolvido.md e runs/<timestamp>.json
+cp .env.example .env    # add your ANTHROPIC_API_KEY
+
+pytest -q               # 3 tests fail — the incident is reproduced
+python main.py          # runs the 3-agent crew, generates incidente_resolvido.md
 ```
 
-## Resultado de uma execução real
+The model is set by `AIR_MODEL` in `.env` (default `anthropic/claude-sonnet-5`). A smaller model such as Haiku cuts cost; results with it have not been benchmarked yet.
 
-Incidente: `POST /orders` retornando HTTP 500 (`TypeError` em `apply_coupon`), alerta de SLO com 5xx em 18,4% (limite 1%).
+---
 
-| Etapa | Resultado |
-|---|---|
-| LogAnalyst | Localizou `src/app.py:42`, função `apply_coupon`, 2 requisições afetadas, severidade SEV2 |
-| CodeAuditor | Confirmou a hipótese e achou um **defeito que não estava no log**: cupom desativado (30% off) seria aceito |
-| PatchEngineer | Patch com guardas para cupom ausente, inexistente e inativo (HTTP 422 em vez de 500) + postmortem com 5 porquês |
-| Testes | Antes: **3 falham / 1 passa**. Depois do patch: **4/4 passam** |
-| Custo | `claude-sonnet-5`, ~135 mil tokens, 24 chamadas à API |
+## Stack
 
-Artefatos em [`examples/`](examples/): [relatório de incidente](examples/incidente_resolvido.md), [JSON da execução](examples/run_20260917-100508.json) e [código corrigido](examples/app_corrigido.py).
-
-## Estrutura
-
-```
-├── logs/error.log     # stack trace realista (FastAPI/uvicorn)
-├── src/app.py         # Order Service com o bug
-├── tests/test_app.py  # testes de contrato/regressão
-├── main.py            # orquestração CrewAI
-├── examples/          # saída real de uma execução (relatório, JSON, patch)
-└── requirements.txt
-```
+`CrewAI` · `Claude (Anthropic API)` · `Pydantic v2` · `FastAPI` · `pytest` · `python-dotenv`
 
 ## Roadmap
 
-- [ ] Agente **Verifier**: aplica o patch em sandbox e roda `pytest` (loop de autocorreção)
-- [ ] Múltiplos cenários de incidente + avaliação (taxa de patches que passam nos testes, custo por incidente)
-- [ ] Observabilidade de agentes (tracing) e GitHub Action que abre PR com o patch
+- [ ] **Verifier agent** — applies its own patch in a sandbox and re-runs pytest in a self-correction loop
+- [ ] Multi-incident benchmark (patch success rate vs. cost per incident)
+- [ ] GitHub Action that opens a PR with the generated patch automatically
+
+---
+
+*Built by [Rafael Prado](https://github.com/rafaeelprado) as part of a portfolio for AI Engineering roles — focused on multi-agent orchestration, structured reasoning, and shipping code an engineer can actually trust.*
+
