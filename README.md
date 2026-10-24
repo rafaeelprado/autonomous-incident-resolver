@@ -2,7 +2,7 @@
 
 🇺🇸 **English** · 🇧🇷 [Português](README.pt-BR.md)
 
-**Multi-agent system that reads a production error log, finds the root cause, audits the source code, and ships a tested patch — with zero human triage.**
+**Multi-agent system that reads a production error log, finds the root cause, audits the source code, and ships a tested patch — reproduced end-to-end on a simulated incident, with no manual triage.**
 
 Built with **CrewAI** + **Claude (Anthropic)**, using structured (Pydantic) outputs as strict contracts between agents, a sandboxed file-reading tool, and a pytest suite that acts as the *ground truth* for what "fixed" means.
 
@@ -21,7 +21,7 @@ Most AI-agent portfolio projects are chatbots wrapped around a prompt. **AIR is 
 
 This repo is the exact incident it resolved, kept as a living demo:
 
-- A FastAPI checkout service (`src/app.py`) with a **real, realistic production bug**: a `TypeError` crash when a coupon code is missing or invalid.
+- A FastAPI checkout service (`src/app.py`) with a **simulated bug that looks like a production one**: a `TypeError` crash when a coupon code is missing or invalid.
 - A **multi-frame stack trace log** (`logs/error.log`) exactly as it would appear from `uvicorn`/`FastAPI` in production, including an SLO-breach alert.
 - The **full AI-generated incident report** ([`examples/incidente_resolvido.md`](examples/incidente_resolvido.md)), with root-cause analysis (5 Whys), a unified diff patch, and a pytest suite — generated end-to-end by the three agents below, no manual editing.
 
