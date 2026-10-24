@@ -2,7 +2,7 @@
 
 🇺🇸 [English](README.md) · 🇧🇷 **Português**
 
-**Sistema multi-agente que lê um log de erro de produção, encontra a causa raiz, audita o código-fonte e entrega um patch testado, sem triagem humana.**
+**Sistema multi-agente que lê um log de erro de produção, encontra a causa raiz, audita o código-fonte e entrega um patch testado, reproduzido de ponta a ponta num incidente simulado, sem triagem humana.**
 
 Construído com **CrewAI** + **Claude (Anthropic)**, usando saídas estruturadas (Pydantic) como contratos rígidos entre os agentes, uma ferramenta de leitura de arquivos com sandbox e uma suíte pytest que funciona como a *verdade de referência* do que significa "corrigido".
 
@@ -21,7 +21,7 @@ A maioria dos projetos de portfólio com agentes de IA é um chatbot em volta de
 
 Este repositório é exatamente o incidente que ele resolveu, mantido como demo viva:
 
-- Um serviço de checkout em FastAPI (`src/app.py`) com um **bug de produção realista**: um crash `TypeError` quando o código do cupom está ausente ou é inválido.
+- Um serviço de checkout em FastAPI (`src/app.py`) com um **bug simulado, com aparência de bug de produção**: um crash `TypeError` quando o código do cupom está ausente ou é inválido.
 - Um **log com stack trace de múltiplos frames** (`logs/error.log`), exatamente como apareceria no `uvicorn`/`FastAPI` em produção, incluindo um alerta de violação de SLO.
 - O **relatório de incidente completo gerado pela IA** ([`examples/incidente_resolvido.md`](examples/incidente_resolvido.md)), com análise de causa raiz (5 porquês), patch em diff unificado e suíte pytest, gerado de ponta a ponta pelos três agentes abaixo, sem edição manual.
 
