@@ -2,6 +2,10 @@
 
 🇺🇸 [English](README.md) · 🇧🇷 **Português**
 
+![AIR resolvendo um incidente de producao de ponta a ponta](examples/demo-air.gif)
+
+*Demo: as execucoes do pytest (falhando e passando) sao reais. A etapa dos agentes e um replay da execucao registrada em examples/run_20260917-100508.json.*
+
 **Sistema multi-agente que lê um log de erro de produção, encontra a causa raiz, audita o código-fonte e entrega um patch testado, reproduzido de ponta a ponta num incidente simulado, sem triagem humana.**
 
 Construído com **CrewAI** + **Claude (Anthropic)**, usando saídas estruturadas (Pydantic) como contratos rígidos entre os agentes, uma ferramenta de leitura de arquivos com sandbox e uma suíte pytest que funciona como a *verdade de referência* do que significa "corrigido".
