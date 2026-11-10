@@ -2,6 +2,10 @@
 
 🇺🇸 **English** · 🇧🇷 [Português](README.pt-BR.md)
 
+![AIR resolving a production incident end to end](examples/demo-air.gif)
+
+*Demo: the failing and passing pytest runs are real. The agent step is a replay of the recorded run in examples/run_20260917-100508.json.*
+
 **Multi-agent system that reads a production error log, finds the root cause, audits the source code, and ships a tested patch — reproduced end-to-end on a simulated incident, with no manual triage.**
 
 Built with **CrewAI** + **Claude (Anthropic)**, using structured (Pydantic) outputs as strict contracts between agents, a sandboxed file-reading tool, and a pytest suite that acts as the *ground truth* for what "fixed" means.
